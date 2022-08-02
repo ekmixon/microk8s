@@ -14,18 +14,21 @@ def get_calico_node_spec(cni_file):
     try:
         with open(cni_file, "r", encoding="utf8") as f:
             for doc in yaml.safe_load_all(f):
-                if doc and doc["kind"] == "DaemonSet" and doc["metadata"]["name"] == "calico-node":
-                    # Reach for the containers
-                    if (
+                if (
+                    doc
+                    and doc["kind"] == "DaemonSet"
+                    and doc["metadata"]["name"] == "calico-node"
+                    and (
                         doc["spec"]
                         and doc["spec"]["template"]
                         and doc["spec"]["template"]["spec"]
                         and doc["spec"]["template"]["spec"]["containers"]
-                    ):
-                        containers = doc["spec"]["template"]["spec"]["containers"]
-                        for c in containers:
-                            if c["name"] == "calico-node":
-                                return c
+                    )
+                ):
+                    containers = doc["spec"]["template"]["spec"]["containers"]
+                    for c in containers:
+                        if c["name"] == "calico-node":
+                            return c
     except (yaml.YAMLError, TypeError) as e:
         print(e, file=sys.stderr)
         return None
@@ -56,8 +59,7 @@ def get_installed_version_of_calico(cni_file):
     return: A string with the version, None otherwise
     """
     try:
-        c = get_calico_node_spec(cni_file)
-        if c:
+        if c := get_calico_node_spec(cni_file):
             parts = c["image"].split(":")
             return parts[-1]
         else:
@@ -74,10 +76,12 @@ def get_calicos_autodetection_method(cni_file):
     return: A string with the IP autodetection method, None otherwise
     """
     try:
-        c = get_calico_node_spec(cni_file)
-        if c:
-            methods = [i["value"] for i in c["env"] if i["name"] == "IP_AUTODETECTION_METHOD"]
-            if len(methods) > 0:
+        if c := get_calico_node_spec(cni_file):
+            if methods := [
+                i["value"]
+                for i in c["env"]
+                if i["name"] == "IP_AUTODETECTION_METHOD"
+            ]:
                 return methods[0]
             return None
     except (yaml.YAMLError, TypeError) as e:

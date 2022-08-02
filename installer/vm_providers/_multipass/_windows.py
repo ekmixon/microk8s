@@ -111,8 +111,7 @@ def _requests_exception_hint(e: requests.RequestException) -> str:
     # Use the __doc__ description to give the user a hint. It seems to be a
     # a decent option over trying to enumerate all of possible types.
     if e.__doc__:
-        split_lines = e.__doc__.splitlines()
-        if split_lines:
+        if split_lines := e.__doc__.splitlines():
             return e.__doc__.splitlines()[0].decode().strip()
 
     # Should never get here.
@@ -134,11 +133,12 @@ def _fetch_installer_url() -> str:
         data = resp.json()
     except simplejson.JSONDecodeError:
         raise ProviderMultipassDownloadFailed(
-            "failed to fetch valid release data from {}".format(_MULTIPASS_RELEASES_API_URL)
+            f"failed to fetch valid release data from {_MULTIPASS_RELEASES_API_URL}"
         )
 
+
     for assets in data:
-        for asset in assets.get("assets", list()):
+        for asset in assets.get("assets", []):
             # Find matching name.
             if asset.get("name") != _MULTIPASS_DL_NAME:
                 continue
@@ -157,7 +157,7 @@ def _download_multipass(dl_dir: str, echoer) -> str:
     dl_basename = os.path.basename(dl_url)
     dl_path = os.path.join(dl_dir, dl_basename)
 
-    echoer.info("Downloading Multipass installer...\n{} -> {}".format(dl_url, dl_path))
+    echoer.info(f"Downloading Multipass installer...\n{dl_url} -> {dl_path}")
 
     try:
         request = requests.get(dl_url, stream=True, allow_redirects=True)
@@ -169,10 +169,9 @@ def _download_multipass(dl_dir: str, echoer) -> str:
     digest = calculate_sha3_384(dl_path)
     if digest != _MULTIPASS_DL_SHA3_384:
         raise ProviderMultipassDownloadFailed(
-            "download failed verification (expected={} but found={})".format(
-                _MULTIPASS_DL_SHA3_384, digest
-            )
+            f"download failed verification (expected={_MULTIPASS_DL_SHA3_384} but found={digest})"
         )
+
 
     echoer.info("Verified installer successfully...")
     return dl_path
@@ -230,10 +229,7 @@ def download_requests_stream(request_stream, destination, message=None, total_re
     progress_bar = _init_progress_bar(total_length, destination, message)
     progress_bar.start()
 
-    if os.path.exists(destination):
-        mode = "ab"
-    else:
-        mode = "wb"
+    mode = "ab" if os.path.exists(destination) else "wb"
     with open(destination, mode) as destination_file:
         for buf in request_stream.iter_content(1024):
             destination_file.write(buf)

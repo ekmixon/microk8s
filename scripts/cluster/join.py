@@ -35,17 +35,17 @@ CLUSTER_API = "cluster/api/v1.0"
 snapdata_path = os.environ.get("SNAP_DATA")
 snap_path = os.environ.get("SNAP")
 ca_cert_file_via_env = "${SNAP_DATA}/certs/ca.remote.crt"
-ca_cert_file = "{}/certs/ca.remote.crt".format(snapdata_path)
-callback_token_file = "{}/credentials/callback-token.txt".format(snapdata_path)
-callback_tokens_file = "{}/credentials/callback-tokens.txt".format(snapdata_path)
+ca_cert_file = f"{snapdata_path}/certs/ca.remote.crt"
+callback_token_file = f"{snapdata_path}/credentials/callback-token.txt"
+callback_tokens_file = f"{snapdata_path}/credentials/callback-tokens.txt"
 server_cert_file_via_env = "${SNAP_DATA}/certs/server.remote.crt"
-server_cert_file = "{}/certs/server.remote.crt".format(snapdata_path)
+server_cert_file = f"{snapdata_path}/certs/server.remote.crt"
 
 CLUSTER_API_V2 = "cluster/api/v2.0"
-cluster_dir = "{}/var/kubernetes/backend".format(snapdata_path)
-cluster_backup_dir = "{}/var/kubernetes/backend.backup".format(snapdata_path)
-cluster_cert_file = "{}/cluster.crt".format(cluster_dir)
-cluster_key_file = "{}/cluster.key".format(cluster_dir)
+cluster_dir = f"{snapdata_path}/var/kubernetes/backend"
+cluster_backup_dir = f"{snapdata_path}/var/kubernetes/backend.backup"
+cluster_cert_file = f"{cluster_dir}/cluster.crt"
+cluster_key_file = f"{cluster_dir}/cluster.key"
 
 FINGERPRINT_MIN_LEN = 12
 
@@ -54,19 +54,18 @@ def get_traefik_port():
     """
     Return the port Traefik listens to. Try read the port from the Traefik configuration or return the default value
     """
-    config_file = "{}/args/traefik/traefik-template.yaml".format(snapdata_path)
+    config_file = f"{snapdata_path}/args/traefik/traefik-template.yaml"
     with open(config_file) as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
         if (
-            "entryPoints" in data
-            and "apiserver" in data["entryPoints"]
-            and "address" in data["entryPoints"]["apiserver"]
+            "entryPoints" not in data
+            or "apiserver" not in data["entryPoints"]
+            or "address" not in data["entryPoints"]["apiserver"]
         ):
-            port = data["entryPoints"]["apiserver"]["address"]
-            port = port.replace(":", "")
-            return port
-        else:
             return "16443"
+        port = data["entryPoints"]["apiserver"]["address"]
+        port = port.replace(":", "")
+        return port
 
 
 def join_request(conn, api_version, req_data, master_ip, verify_peer, fingerprint):
@@ -87,35 +86,34 @@ def join_request(conn, api_version, req_data, master_ip, verify_peer, fingerprin
             peer_cert_hash = hashlib.sha256(der_cert_bin).hexdigest()
             if not peer_cert_hash.startswith(fingerprint):
                 print(
-                    "Joining cluster failed. Could not verify the identity of {}."
-                    " Use '--skip-verify' to skip server certificate check.".format(master_ip)
+                    f"Joining cluster failed. Could not verify the identity of {master_ip}. Use '--skip-verify' to skip server certificate check."
                 )
+
                 exit(4)
 
-        conn.request("POST", "/{}/join".format(api_version), json_params, headers)
+        conn.request("POST", f"/{api_version}/join", json_params, headers)
         response = conn.getresponse()
-        if not response.status == 200:
+        if response.status != 200:
             message = extract_error(response)
-            print("{} ({}).".format(message, response.status))
+            print(f"{message} ({response.status}).")
             exit(6)
         body = response.read()
         return json.loads(body)
     except http.client.HTTPException as e:
-        print("Please ensure the master node is reachable. {}".format(e))
+        print(f"Please ensure the master node is reachable. {e}")
         exit(1)
     except ssl.SSLError as e:
-        print("Peer node verification failed ({}).".format(e))
+        print(f"Peer node verification failed ({e}).")
         exit(4)
 
 
 def extract_error(response):
     message = "Connection failed."
     try:
-        resp = response.read().decode()
-        if resp:
+        if resp := response.read().decode():
             res_data = json.loads(resp)
             if "error" in res_data:
-                message = "{} {}".format(message, res_data["error"])
+                message = f'{message} {res_data["error"]}'
     except ValueError:
         pass
     return message
@@ -148,7 +146,10 @@ def get_connection_info(
     cluster_agent_port = get_cluster_agent_port()
     try:
         context = ssl._create_unverified_context()
-        conn = http.client.HTTPSConnection("{}:{}".format(master_ip, master_port), context=context)
+        conn = http.client.HTTPSConnection(
+            f"{master_ip}:{master_port}", context=context
+        )
+
         conn.connect()
         if cluster_type == "dqlite":
             req_data = {
@@ -170,10 +171,10 @@ def get_connection_info(
                 conn, CLUSTER_API, req_data, master_ip, verify_peer=False, fingerprint=None
             )
     except http.client.HTTPException as e:
-        print("Connecting to cluster failed with {}.".format(e))
+        print(f"Connecting to cluster failed with {e}.")
         exit(5)
     except ssl.SSLError as e:
-        print("Peer node verification failed with {}.".format(e))
+        print(f"Peer node verification failed with {e}.")
         exit(4)
 
 
@@ -185,23 +186,23 @@ def set_arg(key, value, file):
     :param value: value
     :param file: the arguments file
     """
-    filename = "{}/args/{}".format(snapdata_path, file)
-    filename_remote = "{}/args/{}.remote".format(snapdata_path, file)
+    filename = f"{snapdata_path}/args/{file}"
+    filename_remote = f"{snapdata_path}/args/{file}.remote"
     done = False
     with open(filename_remote, "w+") as back_fp:
         with open(filename, "r+") as fp:
-            for _, line in enumerate(fp):
+            for line in fp:
                 if line.startswith(key):
                     done = True
                     if value is not None:
-                        back_fp.write("{}={}\n".format(key, value))
+                        back_fp.write(f"{key}={value}\n")
                 else:
-                    back_fp.write("{}".format(line))
+                    back_fp.write(f"{line}")
         if not done and value is not None:
-            back_fp.write("{}={}\n".format(key, value))
+            back_fp.write(f"{key}={value}\n")
 
-    shutil.copyfile(filename, "{}.backup".format(filename))
-    try_set_file_permissions("{}.backup".format(filename))
+    shutil.copyfile(filename, f"{filename}.backup")
+    try_set_file_permissions(f"{filename}.backup")
     shutil.copyfile(filename_remote, filename)
     try_set_file_permissions(filename)
     os.remove(filename_remote)
@@ -215,7 +216,7 @@ def get_etcd_client_cert(master_ip, master_port, token):
     :param master_port: master port
     :param token: token to contact the master with
     """
-    cer_req_file = "{}/certs/server.remote.csr".format(snapdata_path)
+    cer_req_file = f"{snapdata_path}/certs/server.remote.csr"
     cmd_cert = (
         "{snap}/usr/bin/openssl req -new -sha256 -key {snapdata}/certs/server.key -out {csr} "
         "-config {snapdata}/certs/csr.conf".format(
@@ -228,12 +229,13 @@ def get_etcd_client_cert(master_ip, master_port, token):
         req_data = {"token": token, "request": csr}
         # TODO: enable ssl verification
         signed = requests.post(
-            "https://{}:{}/{}/sign-cert".format(master_ip, master_port, CLUSTER_API),
+            f"https://{master_ip}:{master_port}/{CLUSTER_API}/sign-cert",
             json=req_data,
             verify=False,
         )
+
         if signed.status_code != 200:
-            print("Failed to sign certificate. {}".format(signed.json()["error"]))
+            print(f'Failed to sign certificate. {signed.json()["error"]}')
             exit(1)
         info = signed.json()
         with open(server_cert_file, "w") as cert_fp:
@@ -253,12 +255,12 @@ def get_client_cert(master_ip, master_port, fname, token, username, group=None):
     :param username: the username of the cert's owner
     :param group: the group the owner belongs to
     """
-    info = "/CN={}".format(username)
+    info = f"/CN={username}"
     if group:
-        info = "{}/O={}".format(info, group)
-    cer_req_file = "/var/snap/microk8s/current/certs/{}.csr".format(fname)
-    cer_key_file = "/var/snap/microk8s/current/certs/{}.key".format(fname)
-    cer_file = "/var/snap/microk8s/current/certs/{}.crt".format(fname)
+        info = f"{info}/O={group}"
+    cer_req_file = f"/var/snap/microk8s/current/certs/{fname}.csr"
+    cer_key_file = f"/var/snap/microk8s/current/certs/{fname}.key"
+    cer_file = f"/var/snap/microk8s/current/certs/{fname}.crt"
     if not os.path.exists(cer_key_file):
         cmd_gen_cert_key = "{snap}/usr/bin/openssl genrsa -out {key} 2048".format(
             snap=snap_path, key=cer_key_file
@@ -281,15 +283,16 @@ def get_client_cert(master_ip, master_port, fname, token, username, group=None):
         req_data = {"token": token, "request": csr}
         # TODO: enable ssl verification
         signed = requests.post(
-            "https://{}:{}/{}/sign-cert".format(master_ip, master_port, CLUSTER_API),
+            f"https://{master_ip}:{master_port}/{CLUSTER_API}/sign-cert",
             json=req_data,
             verify=False,
         )
+
         if signed.status_code != 200:
-            error = "Failed to sign {} certificate ({}).".format(fname, signed.status_code)
+            error = f"Failed to sign {fname} certificate ({signed.status_code})."
             try:
                 if "error" in signed.json():
-                    error = "{} {}".format(error, format(signed.json()["error"]))
+                    error = f'{error} {format(signed.json()["error"])}'
             except ValueError:
                 print("Make sure the cluster you connect to supports joining worker nodes.")
             print(error)
@@ -344,10 +347,10 @@ def create_kubeconfig(token, ca, master_ip, api_port, filename, user):
     :param user: the user to use al login
     """
     snap_path = os.environ.get("SNAP")
-    config_template = "{}/microk8s-resources/{}".format(snap_path, "kubelet.config.template")
-    config = "{}/credentials/{}".format(snapdata_path, filename)
-    shutil.copyfile(config, "{}.backup".format(config))
-    try_set_file_permissions("{}.backup".format(config))
+    config_template = f"{snap_path}/microk8s-resources/kubelet.config.template"
+    config = f"{snapdata_path}/credentials/{filename}"
+    shutil.copyfile(config, f"{config}.backup")
+    try_set_file_permissions(f"{config}.backup")
     ca_line = ca_one_line(ca)
     with open(config_template, "r") as tfp:
         with open(config, "w+") as fp:
@@ -374,10 +377,10 @@ def create_x509_kubeconfig(ca, master_ip, api_port, filename, user, path_to_cert
     :param path_to_cert_key: path to certificate key file
     """
     snap_path = os.environ.get("SNAP")
-    config_template = "{}/microk8s-resources/{}".format(snap_path, "client-x509.config.template")
-    config = "{}/credentials/{}".format(snapdata_path, filename)
-    shutil.copyfile(config, "{}.backup".format(config))
-    try_set_file_permissions("{}.backup".format(config))
+    config_template = f"{snap_path}/microk8s-resources/client-x509.config.template"
+    config = f"{snapdata_path}/credentials/{filename}"
+    shutil.copyfile(config, f"{config}.backup")
+    try_set_file_permissions(f"{config}.backup")
     ca_line = ca_one_line(ca)
     with open(config_template, "r") as tfp:
         with open(config, "w+") as fp:
@@ -419,7 +422,7 @@ def update_cert_auth_kubeproxy(token, ca, master_ip, master_port, hostname_overr
     :param master_port: the master node port where the cluster agent listens
     :param hostname_override: the hostname override in case the hostname is not resolvable
     """
-    proxy_token = "{}-proxy".format(token)
+    proxy_token = f"{token}-proxy"
     traefik_port = get_traefik_port()
     cert = get_client_cert(master_ip, master_port, "kube-proxy", proxy_token, "system:kube-proxy")
     create_x509_kubeconfig(
@@ -447,8 +450,8 @@ def update_cert_auth_kubelet(token, ca, master_ip, master_port):
     :param master_port: the master node port where the cluster agent listens
     """
     traefik_port = get_traefik_port()
-    kubelet_token = "{}-kubelet".format(token)
-    kubelet_user = "system:node:{}".format(socket.gethostname())
+    kubelet_token = f"{token}-kubelet"
+    kubelet_user = f"system:node:{socket.gethostname()}"
     cert = get_client_cert(
         master_ip, master_port, "kubelet", kubelet_token, kubelet_user, "system:nodes"
     )
@@ -517,7 +520,7 @@ def mark_worker_node():
     """
     locks = ["clustered.lock", "no-k8s-dqlite"]
     for lock in locks:
-        lock_file = "{}/var/lock/{}".format(snapdata_path, lock)
+        lock_file = f"{snapdata_path}/var/lock/{lock}"
         open(lock_file, "a").close()
         os.chmod(lock_file, 0o700)
     services = ["kubelite", "etcd", "apiserver-kicker", "traefik", "k8s-dqlite"]
@@ -533,7 +536,7 @@ def generate_callback_token():
     """
     token = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(64))
     with open(callback_token_file, "w") as fp:
-        fp.write("{}\n".format(token))
+        fp.write(f"{token}\n")
 
     try_set_file_permissions(callback_token_file)
     return token
@@ -545,7 +548,7 @@ def store_base_kubelet_args(args_string):
 
     :param args_string: the arguments provided
     """
-    args_file = "{}/args/kubelet".format(snapdata_path)
+    args_file = f"{snapdata_path}/args/kubelet"
     with open(args_file, "w") as fp:
         fp.write(args_string)
     try_set_file_permissions(args_file)
@@ -557,16 +560,16 @@ def replace_admin_token(token):
 
     :param token: the admin token
     """
-    file = "{}/credentials/known_tokens.csv".format(snapdata_path)
-    backup_file = "{}.backup".format(file)
+    file = f"{snapdata_path}/credentials/known_tokens.csv"
+    backup_file = f"{file}.backup"
     # That is a critical section. We need to protect it.
     with open(backup_file, "w") as back_fp:
         with open(file, "r") as fp:
-            for _, line in enumerate(fp):
+            for line in fp:
                 if 'admin,admin,"system:masters"' in line:
                     continue
-                back_fp.write("{}".format(line))
-            back_fp.write('{},admin,admin,"system:masters"\n'.format(token))
+                back_fp.write(f"{line}")
+            back_fp.write(f'{token},admin,admin,"system:masters"\n')
 
     try_set_file_permissions(backup_file)
     shutil.copyfile(backup_file, file)
@@ -579,8 +582,8 @@ def store_cert(filename, payload):
     :param filename: where to store the certificate
     :param payload: certificate payload
     """
-    file_with_path = "{}/certs/{}".format(snapdata_path, filename)
-    backup_file_with_path = "{}.backup".format(file_with_path)
+    file_with_path = f"{snapdata_path}/certs/{filename}"
+    backup_file_with_path = f"{file_with_path}.backup"
     shutil.copyfile(file_with_path, backup_file_with_path)
     try_set_file_permissions(backup_file_with_path)
     with open(file_with_path, "w+") as fp:
@@ -618,17 +621,15 @@ def create_admin_kubeconfig(ca, ha_admin_token=None):
     else:
         token = ha_admin_token
     assert token is not None
-    config_template = "{}/microk8s-resources/{}".format(snap_path, "client.config.template")
-    config = "{}/credentials/client.config".format(snapdata_path)
-    shutil.copyfile(config, "{}.backup".format(config))
-    try_set_file_permissions("{}.backup".format(config))
+    config_template = f"{snap_path}/microk8s-resources/client.config.template"
+    config = f"{snapdata_path}/credentials/client.config"
+    shutil.copyfile(config, f"{config}.backup")
+    try_set_file_permissions(f"{config}.backup")
     ca_line = ca_one_line(ca)
     with open(config_template, "r") as tfp:
         with open(config, "w+") as fp:
-            for _, config_txt in enumerate(tfp):
-                if config_txt.strip().startswith("username:"):
-                    continue
-                else:
+            for config_txt in tfp:
+                if not config_txt.strip().startswith("username:"):
                     config_txt = config_txt.replace("CADATA", ca_line)
                     config_txt = config_txt.replace("NAME", "admin")
                     config_txt = config_txt.replace("AUTHTYPE", "token")
@@ -643,7 +644,7 @@ def store_callback_token(token):
 
     :param token: the callback token
     """
-    callback_token_file = "{}/credentials/callback-token.txt".format(snapdata_path)
+    callback_token_file = f"{snapdata_path}/credentials/callback-token.txt"
     with open(callback_token_file, "w") as fp:
         fp.write(token)
     try_set_file_permissions(callback_token_file)
@@ -666,15 +667,11 @@ def update_dqlite(cluster_cert, cluster_key, voters, host):
     os.mkdir(cluster_dir)
     store_cluster_certs(cluster_cert, cluster_key)
 
-    # We get the dqlite port from the already existing deployment
-    port = 19001
-    with open("{}/info.yaml".format(cluster_backup_dir)) as f:
+    with open(f"{cluster_backup_dir}/info.yaml") as f:
         data = yaml.safe_load(f)
-    if "Address" in data:
-        port = data["Address"].split(":")[1]
-
-    init_data = {"Cluster": voters, "Address": "{}:{}".format(host, port)}
-    with open("{}/init.yaml".format(cluster_dir), "w") as f:
+    port = data["Address"].split(":")[1] if "Address" in data else 19001
+    init_data = {"Cluster": voters, "Address": f"{host}:{port}"}
+    with open(f"{cluster_dir}/init.yaml", "w") as f:
         yaml.dump(init_data, f)
 
     service("start", "k8s-dqlite")
@@ -694,10 +691,9 @@ def update_dqlite(cluster_cert, cluster_key, voters, host):
             )
             if host in out.decode():
                 break
-            else:
-                print(".", end=" ", flush=True)
-                time.sleep(5)
-                waits -= 1
+            print(".", end=" ", flush=True)
+            time.sleep(5)
+            waits -= 1
 
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             print("..", end=" ", flush=True)
@@ -705,7 +701,7 @@ def update_dqlite(cluster_cert, cluster_key, voters, host):
             waits -= 1
     print(" ")
 
-    with open("{}//certs/csr.conf".format(snapdata_path), "w") as f:
+    with open(f"{snapdata_path}//certs/csr.conf", "w") as f:
         f.write("changeme")
 
     restart_all_services()
@@ -726,7 +722,7 @@ def join_dqlite(connection_parts, verify=False, worker=False):
         fingerprint = connection_parts[2]
         verify = True
 
-    print("Contacting cluster at {}".format(master_ip))
+    print(f"Contacting cluster at {master_ip}")
 
     info = get_connection_info(
         master_ip,
@@ -749,19 +745,17 @@ def update_traefik(master_ip, api_port, nodes_ips):
     Update the traefik configuration
     """
     lock_path = os.path.expandvars("${SNAP_DATA}/var/lock")
-    lock = "{}/no-traefik".format(lock_path)
+    lock = f"{lock_path}/no-traefik"
     if os.path.exists(lock):
         os.remove(lock)
 
     # add the addresses where we expect to find the API servers
-    addresses = []
-    # first the node we contact
-    addresses.append({"address": "{}:{}".format(master_ip, api_port)})
+    addresses = [{"address": f"{master_ip}:{api_port}"}]
     # then all the nodes assuming the default port
     for n in nodes_ips:
         if n == master_ip:
             continue
-        addresses.append({"address": "{}:{}".format(n, api_port)})
+        addresses.append({"address": f"{n}:{api_port}"})
 
     traefik_providers = os.path.expandvars("${SNAP_DATA}/args/traefik/provider-template.yaml")
     traefik_providers_out = os.path.expandvars("${SNAP_DATA}/args/traefik/provider.yaml")
@@ -785,14 +779,13 @@ def print_traefik_usage(master_ip, api_port, nodes_ips):
         "Currently this worker node is configured with the following kubernetes API server endpoints:"
     )
     print(
-        "    - {} and port {}, this is the cluster node contacted during the join operation.".format(
-            master_ip, api_port
-        )
+        f"    - {master_ip} and port {api_port}, this is the cluster node contacted during the join operation."
     )
+
     for n in nodes_ips:
         if n == master_ip:
             continue
-        print("    - {} assuming port {}".format(n, api_port))
+        print(f"    - {n} assuming port {api_port}")
     print("")
     print(
         "If the above endpoints are incorrect, incomplete or if the API servers are behind a loadbalancer please update"
@@ -853,7 +846,7 @@ def join_dqlite_master_node(info, master_ip, token):
     ]:
         component_token = get_token(component[0])
         if not component_token:
-            print("Error, could not locate {} token. Joining cluster failed.".format(component[0]))
+            print(f"Error, could not locate {component[0]} token. Joining cluster failed.")
             exit(3)
         assert token is not None
         # TODO make this configurable

@@ -19,8 +19,7 @@ def get_kine_endpoint():
     """
     Return the default kine endpoint
     """
-    kine_socket = "unix:///var/snap/microk8s/current/var/kubernetes/backend/kine.sock:12379"
-    return kine_socket
+    return "unix:///var/snap/microk8s/current/var/kubernetes/backend/kine.sock:12379"
 
 
 def kine_exists():
@@ -39,7 +38,7 @@ def generate_backup_name():
     :return: a generated filename
     """
     now = datetime.datetime.now()
-    return "backup-{}".format(now.strftime("%Y-%m-%d-%H-%M-%S"))
+    return f'backup-{now.strftime("%Y-%m-%d-%H-%M-%S")}'
 
 
 def run_command(command):
@@ -55,8 +54,7 @@ def run_command(command):
             break
         if output:
             print(output.decode().strip())
-    rc = process.poll()
-    return rc
+    return process.poll()
 
 
 def backup(fname=None, debug=False):
@@ -74,28 +72,28 @@ def backup(fname=None, debug=False):
         fname = generate_backup_name()
     if fname.endswith(".tar.gz"):
         fname = fname[:-7]
-    fname_tar = "{}.tar.gz".format(fname)
+    fname_tar = f"{fname}.tar.gz"
 
     with tempfile.TemporaryDirectory() as tmpdirname:
-        backup_cmd = "{}/bin/migrator --endpoint {} --mode backup-dqlite --db-dir {}".format(
-            snap_path, kine_ep, "{}/{}".format(tmpdirname, fname)
-        )
+        backup_cmd = f"{snap_path}/bin/migrator --endpoint {kine_ep} --mode backup-dqlite --db-dir {tmpdirname}/{fname}"
+
         if debug:
-            backup_cmd = "{} {}".format(backup_cmd, "--debug")
+            backup_cmd = f"{backup_cmd} --debug"
         try:
             rc = run_command(backup_cmd)
             if rc > 0:
-                print("Backup process failed. {}".format(rc))
+                print(f"Backup process failed. {rc}")
                 exit(1)
             with tarfile.open(fname_tar, "w:gz") as tar:
                 tar.add(
-                    "{}/{}".format(tmpdirname, fname),
-                    arcname=os.path.basename("{}/{}".format(tmpdirname, fname)),
+                    f"{tmpdirname}/{fname}",
+                    arcname=os.path.basename(f"{tmpdirname}/{fname}"),
                 )
 
-            print("The backup is: {}".format(fname_tar))
+
+            print(f"The backup is: {fname_tar}")
         except subprocess.CalledProcessError as e:
-            print("Backup process failed. {}".format(e))
+            print(f"Backup process failed. {e}")
             exit(2)
 
 
@@ -111,23 +109,19 @@ def restore(fname_tar, debug=False):
     with tempfile.TemporaryDirectory() as tmpdirname:
         with tarfile.open(fname_tar, "r:gz") as tar:
             tar.extractall(path=tmpdirname)
-        if fname_tar.endswith(".tar.gz"):
-            fname = fname_tar[:-7]
-        else:
-            fname = fname_tar
+        fname = fname_tar[:-7] if fname_tar.endswith(".tar.gz") else fname_tar
         fname = os.path.basename(fname)
-        restore_cmd = "{}/bin/migrator --endpoint {} --mode restore-to-dqlite --db-dir {}".format(
-            snap_path, kine_ep, "{}/{}".format(tmpdirname, fname)
-        )
+        restore_cmd = f"{snap_path}/bin/migrator --endpoint {kine_ep} --mode restore-to-dqlite --db-dir {tmpdirname}/{fname}"
+
         if debug:
-            restore_cmd = "{} {}".format(restore_cmd, "--debug")
+            restore_cmd = f"{restore_cmd} --debug"
         try:
             rc = run_command(restore_cmd)
             if rc > 0:
-                print("Restore process failed. {}".format(rc))
+                print(f"Restore process failed. {rc}")
                 exit(3)
         except subprocess.CalledProcessError as e:
-            print("Restore process failed. {}".format(e))
+            print(f"Restore process failed. {e}")
             exit(4)
 
 
@@ -153,7 +147,7 @@ if __name__ == "__main__":
 
     if "backup-file" in args:
         fname = vars(args)["backup-file"]
-        print("Restoring from {}".format(fname))
+        print(f"Restoring from {fname}")
         restore(fname, args.debug)
     elif "o" in args:
         print("Backing up the datastore")

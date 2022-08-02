@@ -76,12 +76,15 @@ class Auxiliary(ABC):
         kctl_dir = self.get_kubectl_directory()
         try:
             exit_code = subprocess.check_call(
-                [
-                    os.path.join(kctl_dir, "kubectl"),
-                    "--kubeconfig={}".format(self.get_kubeconfig_path()),
-                ]
-                + self._args,
+                (
+                    [
+                        os.path.join(kctl_dir, "kubectl"),
+                        f"--kubeconfig={self.get_kubeconfig_path()}",
+                    ]
+                    + self._args
+                )
             )
+
         except subprocess.CalledProcessError as e:
             return e.returncode
         else:
@@ -123,10 +126,7 @@ class Windows(Auxiliary):
         except subprocess.CalledProcessError:
             return False
 
-        if "State : Disabled" in out.decode():
-            return False
-
-        return True
+        return "State : Disabled" not in out.decode()
 
     @staticmethod
     def enable_hyperv() -> None:
@@ -147,9 +147,7 @@ class Windows(Auxiliary):
                 ]
             )
         except subprocess.CalledProcessError as e:
-            if e.returncode == 3010:
-                pass  # This is fine, because Windows.
-            else:
+            if e.returncode != 3010:
                 raise
 
 

@@ -30,12 +30,12 @@ logger = logging.getLogger(__name__)
 
 
 def _run(command: Sequence[str], stdin=subprocess.DEVNULL) -> None:
-    logger.debug("Running {}".format(" ".join(command)))
+    logger.debug(f'Running {" ".join(command)}')
     subprocess.check_call(command, stdin=stdin)
 
 
 def _run_output(command: Sequence[str], **kwargs) -> bytes:
-    logger.debug("Running {}".format(" ".join(command)))
+    logger.debug(f'Running {" ".join(command)}')
     return subprocess.check_output(command, **kwargs)
 
 
@@ -152,7 +152,7 @@ class MultipassCommand:
         :param str cloud_init: path to a user-data cloud-init configuration.
         """
         if remote is not None:
-            image = "{}:{}".format(remote, image)
+            image = f"{remote}:{image}"
         cmd = [self.provider_cmd, "launch", image, "--name", instance_name]
         if cloud_init is not None:
             cmd.extend(["--cloud-init", cloud_init])
@@ -278,13 +278,13 @@ class MultipassCommand:
         """
         cmd = [self.provider_cmd, "mount", source, target]
         if uid_map is None:
-            uid_map = dict()
+            uid_map = {}
         for host_map, instance_map in uid_map.items():
-            cmd.extend(["--uid-map", "{}:{}".format(host_map, instance_map)])
+            cmd.extend(["--uid-map", f"{host_map}:{instance_map}"])
         if gid_map is None:
-            gid_map = dict()
+            gid_map = {}
         for host_map, instance_map in gid_map.items():
-            cmd.extend(["--gid-map", "{}:{}".format(host_map, instance_map)])
+            cmd.extend(["--gid-map", f"{host_map}:{instance_map}"])
         try:
             _run(cmd)
         except subprocess.CalledProcessError as process_error:

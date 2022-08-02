@@ -20,10 +20,6 @@ import os
 import shutil
 import sys
 
-if sys.version_info < (3, 6):
-    pass
-
-
 logger = logging.getLogger(__name__)
 
 

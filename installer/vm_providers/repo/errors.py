@@ -38,10 +38,7 @@ class CacheUpdateFailedError(RepoError):
     )
 
     def __init__(self, errors: str) -> None:
-        if errors:
-            errors = "\n\n{}\n\n".format(errors.replace(", ", "\n"))
-        else:
-            errors = " "
+        errors = "\n\n{}\n\n".format(errors.replace(", ", "\n")) if errors else " "
         super().__init__(errors=errors)
 
 
@@ -88,9 +85,8 @@ class PackageBrokenError(RepoError):
 class PackageNotFoundError(RepoError):
     @property
     def message(self):
-        message = "The package {!r} was not found.".format(self.package_name)
         # If the package was multiarch, try to help.
-        return message
+        return "The package {!r} was not found.".format(self.package_name)
 
     def __init__(self, package_name):
         self.package_name = package_name

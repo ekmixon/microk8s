@@ -23,16 +23,15 @@ def print_short(isReady, enabled_addons, disabled_addons):
         print("addons:")
         if enabled_addons and len(enabled_addons) > 0:
             for enabled in enabled_addons:
-                print("{}/{}: enabled".format(enabled["repository"], enabled["name"]))
+                print(f'{enabled["repository"]}/{enabled["name"]}: enabled')
         if disabled_addons and len(disabled_addons) > 0:
             for disabled in disabled_addons:
-                print("{}/{}: disabled".format(disabled["repository"], disabled["name"]))
+                print(f'{disabled["repository"]}/{disabled["name"]}: disabled')
     else:
         print("microk8s is not running. Use microk8s inspect for a deeper inspection.")
 
 
 def print_pretty(isReady, enabled_addons, disabled_addons):
-    console_formatter = "{:>3} {:<20} # ({}) {}"
     if isReady:
         print("microk8s is running")
         if not is_ha_enabled():
@@ -48,20 +47,14 @@ def print_pretty(isReady, enabled_addons, disabled_addons):
             standby = "none"
             for node in info:
                 if node[1] == "voter":
-                    if masters == "none":
-                        masters = "{}".format(node[0])
-                    else:
-                        masters = "{} {}".format(masters, node[0])
+                    masters = f"{node[0]}" if masters == "none" else f"{masters} {node[0]}"
                 if node[1] == "standby":
-                    if standby == "none":
-                        standby = "{}".format(node[0])
-                    else:
-                        standby = "{} {}".format(standby, node[0])
-
+                    standby = f"{node[0]}" if standby == "none" else f"{standby} {node[0]}"
             print("{:>2}{} {}".format("", "datastore master nodes:", masters))
             print("{:>2}{} {}".format("", "datastore standby nodes:", standby))
 
         print("addons:")
+        console_formatter = "{:>3} {:<20} # ({}) {}"
         if enabled_addons and len(enabled_addons) > 0:
             print("{:>2}{}".format("", "enabled:"))
             for enabled in enabled_addons:
@@ -89,10 +82,10 @@ def print_short_yaml(isReady, enabled_addons, disabled_addons):
     if isReady:
         print("addons:")
         for enabled in enabled_addons:
-            print("  {}/{}: enabled".format(enabled["repository"], enabled["name"]))
+            print(f'  {enabled["repository"]}/{enabled["name"]}: enabled')
 
         for disabled in disabled_addons:
-            print("  {}/{}: disabled".format(disabled["repository"], disabled["name"]))
+            print(f'  {disabled["repository"]}/{disabled["name"]}: disabled')
     else:
         print(
             "{:>2}{} {}".format(
@@ -150,14 +143,8 @@ def print_addon_status(enabled):
 
 
 def ha_cluster_formed(info):
-    voters = 0
-    for node in info:
-        if node[1] == "voter":
-            voters += 1
-    ha_formed = False
-    if voters > 2:
-        ha_formed = True
-    return ha_formed
+    voters = sum(node[1] == "voter" for node in info)
+    return voters > 2
 
 
 if __name__ == "__main__":
@@ -197,11 +184,7 @@ if __name__ == "__main__":
     timeout = args.timeout
     yaml_short = args.yaml
 
-    if wait_ready:
-        isReady = wait_for_ready(timeout)
-    else:
-        isReady = is_cluster_ready()
-
+    isReady = wait_for_ready(timeout) if wait_ready else is_cluster_ready()
     available_addons = get_available_addons(get_current_arch())
 
     if args.addon != "all":
@@ -211,13 +194,11 @@ if __name__ == "__main__":
 
     if args.addon != "all":
         print_addon_status(enabled)
+    elif args.format == "yaml":
+        print_yaml(isReady, enabled, disabled)
+    elif args.format == "short":
+        print_short(isReady, enabled, disabled)
+    elif yaml_short:
+        print_short_yaml(isReady, enabled, disabled)
     else:
-        if args.format == "yaml":
-            print_yaml(isReady, enabled, disabled)
-        elif args.format == "short":
-            print_short(isReady, enabled, disabled)
-        else:
-            if yaml_short:
-                print_short_yaml(isReady, enabled, disabled)
-            else:
-                print_pretty(isReady, enabled, disabled)
+        print_pretty(isReady, enabled, disabled)

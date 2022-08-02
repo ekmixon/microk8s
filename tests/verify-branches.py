@@ -17,23 +17,22 @@ class TestMicrok8sBranches(object):
         upstream_version = self._upstream_release()
         assert upstream_version
         version_parts = upstream_version.split(".")
-        major_minor_upstream_version = "{}.{}".format(version_parts[0][1:], version_parts[1])
+        major_minor_upstream_version = f"{version_parts[0][1:]}.{version_parts[1]}"
         if version_parts[1] != "0":
-            prev_major_minor_version = "{}.{}".format(
-                version_parts[0][1:], int(version_parts[1]) - 1
+            prev_major_minor_version = (
+                f"{version_parts[0][1:]}.{int(version_parts[1]) - 1}"
             )
+
         else:
             major = int(version_parts[0][1:]) - 1
             minor = self._get_max_minor(major)
-            prev_major_minor_version = "{}.{}".format(major, minor)
+            prev_major_minor_version = f"{major}.{minor}"
         print(
-            "Current stable is {}. Making sure we have a branch for {}".format(
-                major_minor_upstream_version, prev_major_minor_version
-            )
+            f"Current stable is {major_minor_upstream_version}. Making sure we have a branch for {prev_major_minor_version}"
         )
-        cmd = "git ls-remote --heads http://github.com/canonical/microk8s.git {}".format(
-            prev_major_minor_version
-        )
+
+        cmd = f"git ls-remote --heads http://github.com/canonical/microk8s.git {prev_major_minor_version}"
+
         branch = check_output(cmd.split()).decode("utf-8")
         assert prev_major_minor_version in branch
 
@@ -57,9 +56,6 @@ class TestMicrok8sBranches(object):
 
     def _upstream_release_exists(self, major, minor):
         """Return true if the major.minor release exists"""
-        release_url = "https://dl.k8s.io/release/stable-{}.{}.txt".format(major, minor)
+        release_url = f"https://dl.k8s.io/release/stable-{major}.{minor}.txt"
         r = requests.get(release_url)
-        if r.status_code == 200:
-            return True
-        else:
-            return False
+        return r.status_code == 200

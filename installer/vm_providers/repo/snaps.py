@@ -127,18 +127,15 @@ class SnapPackage:
 
     def _get_store_channels(self):
         snap_store_info = self.get_store_snap_info()
-        if not self.in_store:
-            return dict()
-
-        return snap_store_info["channels"]
+        return snap_store_info["channels"] if self.in_store else {}
 
     def get_current_channel(self):
         current_channel = ""
         if self.installed:
             local_snap_info = self.get_local_snap_info()
             current_channel = local_snap_info["channel"]
-            if any([current_channel.startswith(risk) for risk in _CHANNEL_RISKS]):
-                current_channel = "latest/{}".format(current_channel)
+            if any(current_channel.startswith(risk) for risk in _CHANNEL_RISKS):
+                current_channel = f"latest/{current_channel}"
         return current_channel
 
     def has_assertions(self) -> bool:
@@ -168,17 +165,19 @@ class SnapPackage:
         return self.channel in store_channels.keys()
 
     def local_download(self, *, snap_path: str, assertion_path: str) -> None:
-        assertions = list()  # type: List[List[str]]
+        assertions = []
         # We write an empty assertions file for dangerous installs to
         # have a consistent interface.
         if self.has_assertions():
-            assertions.append(["snap-declaration", "snap-name={}".format(self.name)])
-            assertions.append(
-                [
-                    "snap-revision",
-                    "snap-revision={}".format(self._local_snap_info["revision"]),
-                    "snap-id={}".format(self._local_snap_info["id"]),
-                ]
+            assertions.extend(
+                (
+                    ["snap-declaration", f"snap-name={self.name}"],
+                    [
+                        "snap-revision",
+                        f'snap-revision={self._local_snap_info["revision"]}',
+                        f'snap-id={self._local_snap_info["id"]}',
+                    ],
+                )
             )
 
         if assertions:
@@ -211,9 +210,7 @@ class SnapPackage:
         if not self.is_valid():
             raise errors.SnapUnavailableError(snap_name=self.name, snap_channel=self.channel)
 
-        snap_install_cmd = []
-        if _snap_command_requires_sudo():
-            snap_install_cmd = ["sudo"]
+        snap_install_cmd = ["sudo"] if _snap_command_requires_sudo() else []
         snap_install_cmd.extend(["snap", "install", self.name])
         if self._original_channel:
             snap_install_cmd.extend(["--channel", self._original_channel])
@@ -233,9 +230,7 @@ class SnapPackage:
         if not self.is_valid():
             raise errors.SnapUnavailableError(snap_name=self.name, snap_channel=self.channel)
 
-        snap_refresh_cmd = []
-        if _snap_command_requires_sudo():
-            snap_refresh_cmd = ["sudo"]
+        snap_refresh_cmd = ["sudo"] if _snap_command_requires_sudo() else []
         snap_refresh_cmd.extend(["snap", "refresh", self.name, "--channel", self.channel])
         if self.is_classic():
             # TODO make this a user explicit choice
@@ -295,8 +290,9 @@ def install_snaps(snaps_list: Union[Sequence[str], Set[str]]) -> List[str]:
             snap_pkg.refresh()
 
         snaps_installed.append(
-            "{}={}".format(snap_pkg.name, snap_pkg.get_local_snap_info()["revision"])
+            f'{snap_pkg.name}={snap_pkg.get_local_snap_info()["revision"]}'
         )
+
     return snaps_installed
 
 
@@ -387,4 +383,4 @@ def get_installed_snaps():
         local_snaps = snap_info.json()["result"]
     except exceptions.ConnectionError:
         local_snaps = []
-    return ["{}={}".format(snap["name"], snap["revision"]) for snap in local_snaps]
+    return [f'{snap["name"]}={snap["revision"]}' for snap in local_snaps]

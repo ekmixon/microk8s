@@ -33,15 +33,15 @@ def remove_expired_token_from_file(file):
 
     :param file: the file to be removed from
     """
-    backup_file = "{}.backup".format(file)
+    backup_file = f"{file}.backup"
     # That is a critical section. We need to protect it.
     # We are safe for now because flask serves one request at a time.
     with open(backup_file, "w") as back_fp:
         with open(file, "r") as fp:
-            for _, line in enumerate(fp):
+            for line in fp:
                 if is_token_expired(line):
                     continue
-                back_fp.write("{}".format(line))
+                back_fp.write(f"{line}")
 
     try_set_file_permissions(backup_file)
     shutil.copyfile(backup_file, file)
@@ -54,17 +54,16 @@ def remove_token_from_file(token, file):
     :param token: the token to be removed
     :param file: the file to be removed from
     """
-    backup_file = "{}.backup".format(file)
+    backup_file = f"{file}.backup"
     # That is a critical section. We need to protect it.
     # We are safe for now because flask serves one request at a time.
     with open(backup_file, "w") as back_fp:
         with open(file, "r") as fp:
-            for _, line in enumerate(fp):
+            for line in fp:
                 # Not considering cluster tokens with expiry in this method.
-                if "|" not in line:
-                    if line.strip() == token:
-                        continue
-                back_fp.write("{}".format(line))
+                if "|" not in line and line.strip() == token:
+                    continue
+                back_fp.write(f"{line}")
 
     try_set_file_permissions(backup_file)
     shutil.copyfile(backup_file, file)
@@ -91,14 +90,14 @@ def get_callback_token():
     :returns: the token
     """
     snapdata_path = os.environ.get("SNAP_DATA")
-    callback_token_file = "{}/credentials/callback-token.txt".format(snapdata_path)
+    callback_token_file = f"{snapdata_path}/credentials/callback-token.txt"
     if os.path.exists(callback_token_file):
         with open(callback_token_file) as fp:
             token = fp.read()
     else:
         token = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(64))
         with open(callback_token_file, "w") as fp:
-            fp.write("{}\n".format(token))
+            fp.write(f"{token}\n")
         try_set_file_permissions(callback_token_file)
 
     return token
@@ -148,8 +147,8 @@ def get_dqlite_port():
     """
     # We get the dqlite port from the already existing deployment
     snapdata_path = os.environ.get("SNAP_DATA")
-    cluster_dir = "{}/var/kubernetes/backend".format(snapdata_path)
-    dqlite_info = "{}/info.yaml".format(cluster_dir)
+    cluster_dir = f"{snapdata_path}/var/kubernetes/backend"
+    dqlite_info = f"{cluster_dir}/info.yaml"
     port = 19001
     if os.path.exists(dqlite_info):
         with open(dqlite_info) as f:
@@ -168,9 +167,9 @@ def get_cluster_agent_port():
     """
     cluster_agent_port = "25000"
     snapdata_path = os.environ.get("SNAP_DATA")
-    filename = "{}/args/cluster-agent".format(snapdata_path)
+    filename = f"{snapdata_path}/args/cluster-agent"
     with open(filename) as fp:
-        for _, line in enumerate(fp):
+        for line in fp:
             if line.startswith("--bind"):
                 port_parse = line.split(" ")
                 port_parse = port_parse[-1].split("=")
@@ -188,10 +187,9 @@ def get_control_plane_nodes_internal_ips():
     """
     snap_path = os.environ.get("SNAP")
     nodes_info = subprocess.check_output(
-        "{}/microk8s-kubectl.wrapper get no -o json -l node.kubernetes.io/microk8s-controlplane=microk8s-controlplane".format(
-            snap_path
-        ).split()
+        f"{snap_path}/microk8s-kubectl.wrapper get no -o json -l node.kubernetes.io/microk8s-controlplane=microk8s-controlplane".split()
     )
+
     info = json.loads(nodes_info.decode())
     node_ips = []
     for node_info in info["items"]:
@@ -229,9 +227,9 @@ def apply_cni_manifest(timeout_insec=60):
     Apply the CNI yaml. If applying the manifest fails an exception is raised.
     :param timeout_insec: Try up to timeout seconds to apply the manifest.
     """
-    yaml = "{}/args/cni-network/cni.yaml".format(os.environ.get("SNAP_DATA"))
+    yaml = f'{os.environ.get("SNAP_DATA")}/args/cni-network/cni.yaml'
     snap_path = os.environ.get("SNAP")
-    cmd = "{}/microk8s-kubectl.wrapper apply -f {}".format(snap_path, yaml)
+    cmd = f"{snap_path}/microk8s-kubectl.wrapper apply -f {yaml}"
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=timeout_insec)
     while True:
         try:
@@ -239,10 +237,10 @@ def apply_cni_manifest(timeout_insec=60):
             break
         except CalledProcessError as err:
             output = err.output.strip().decode("utf8").replace("\\n", "\n")
-            print("Applying {} failed with {}".format(yaml, output))
+            print(f"Applying {yaml} failed with {output}")
             if datetime.datetime.now() > deadline:
                 raise
-            print("Retrying {}".format(cmd))
+            print(f"Retrying {cmd}")
             time.sleep(3)
 
 
@@ -251,12 +249,9 @@ def cni_is_patched():
     Detect if the cni.yaml manifest already has the hint for detecting nodes routing paths
     :return: True if calico knows where the rest of the nodes are.
     """
-    yaml = "{}/args/cni-network/cni.yaml".format(os.environ.get("SNAP_DATA"))
+    yaml = f'{os.environ.get("SNAP_DATA")}/args/cni-network/cni.yaml'
     with open(yaml) as f:
-        if "can-reach" in f.read():
-            return True
-        else:
-            return False
+        return "can-reach" in f.read()
 
 
 def patch_cni(ip):
@@ -264,14 +259,14 @@ def patch_cni(ip):
     Patch the cni.yaml manifest with the proper hint on where the rest of the nodes are
     :param ip: The IP another k8s node has.
     """
-    cni_yaml = "{}/args/cni-network/cni.yaml".format(os.environ.get("SNAP_DATA"))
-    backup_file = "{}.backup".format(cni_yaml)
+    cni_yaml = f'{os.environ.get("SNAP_DATA")}/args/cni-network/cni.yaml'
+    backup_file = f"{cni_yaml}.backup"
     with open(backup_file, "w") as back_fp:
         with open(cni_yaml, "r") as fp:
-            for _, line in enumerate(fp):
+            for line in fp:
                 if "first-found" in line:
-                    line = line.replace("first-found", "can-reach={}".format(ip))
-                back_fp.write("{}".format(line))
+                    line = line.replace("first-found", f"can-reach={ip}")
+                back_fp.write(f"{line}")
 
     try_set_file_permissions(backup_file)
     shutil.copyfile(backup_file, cni_yaml)
@@ -300,7 +295,7 @@ def is_kubelite():
     snap_data = os.environ.get("SNAP_DATA")
     if not snap_data:
         snap_data = "/var/snap/microk8s/current/"
-    kubelite_lock = "{}/var/lock/lite.lock".format(snap_data)
+    kubelite_lock = f"{snap_data}/var/lock/lite.lock"
     return os.path.exists(kubelite_lock)
 
 
@@ -312,16 +307,14 @@ def service(operation, service_name):
     :param operation: Operation to perform on the service
     """
     if (
-        service_name == "apiserver"
-        or service_name == "proxy"
-        or service_name == "kubelet"
-        or service_name == "scheduler"
-        or service_name == "controller-manager"
-    ) and is_kubelite():
-        subprocess.check_call("snapctl {} microk8s.daemon-kubelite".format(operation).split())
+        service_name
+        in ["apiserver", "proxy", "kubelet", "scheduler", "controller-manager"]
+        and is_kubelite()
+    ):
+        subprocess.check_call(f"snapctl {operation} microk8s.daemon-kubelite".split())
     else:
         subprocess.check_call(
-            "snapctl {} microk8s.daemon-{}".format(operation, service_name).split()
+            f"snapctl {operation} microk8s.daemon-{service_name}".split()
         )
 
 
@@ -331,7 +324,7 @@ def mark_no_cert_reissue():
     on network changes
     """
     snap_data = os.environ.get("SNAP_DATA")
-    lock_file = "{}/var/lock/no-cert-reissue".format(snap_data)
+    lock_file = f"{snap_data}/var/lock/no-cert-reissue"
     open(lock_file, "a").close()
     os.chmod(lock_file, 0o700)
 
@@ -342,7 +335,7 @@ def unmark_no_cert_reissue():
     on network changes
     """
     snap_data = os.environ.get("SNAP_DATA")
-    lock_file = "{}/var/lock/no-cert-reissue".format(snap_data)
+    lock_file = f"{snap_data}/var/lock/no-cert-reissue"
     if os.path.exists(lock_file):
         os.unlink(lock_file)
 
@@ -356,10 +349,11 @@ def restart_all_services():
     while waits > 0:
         try:
             subprocess.check_call(
-                "{}/microk8s-stop.wrapper".format(snap_path).split(),
+                f"{snap_path}/microk8s-stop.wrapper".split(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
             break
         except subprocess.CalledProcessError:
             time.sleep(5)
@@ -368,10 +362,11 @@ def restart_all_services():
     while waits > 0:
         try:
             subprocess.check_call(
-                "{}/microk8s-start.wrapper".format(snap_path).split(),
+                f"{snap_path}/microk8s-start.wrapper".split(),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
             break
         except subprocess.CalledProcessError:
             time.sleep(5)
@@ -387,7 +382,7 @@ def get_token(name, tokens_file="known_tokens.csv"):
     :returns: the token or None(if name doesn't exist)
     """
     snapdata_path = os.environ.get("SNAP_DATA")
-    file = "{}/credentials/{}".format(snapdata_path, tokens_file)
+    file = f"{snapdata_path}/credentials/{tokens_file}"
     with open(file) as fp:
         for line in fp:
             if name in line:

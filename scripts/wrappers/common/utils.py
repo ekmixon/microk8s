@@ -40,7 +40,7 @@ def snap_common() -> Path:
 def run(*args, die=True):
     # Add wrappers to $PATH
     env = os.environ.copy()
-    env["PATH"] += ":%s" % os.environ["SNAP"]
+    env["PATH"] += f':{os.environ["SNAP"]}'
     result = subprocess.run(
         args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
     )
@@ -48,14 +48,13 @@ def run(*args, die=True):
     try:
         result.check_returncode()
     except subprocess.CalledProcessError as err:
-        if die:
-            if result.stderr:
-                print(result.stderr.decode("utf-8"))
-            print(err)
-            sys.exit(1)
-        else:
+        if not die:
             raise
 
+        if result.stderr:
+            print(result.stderr.decode("utf-8"))
+        print(err)
+        sys.exit(1)
     return result.stdout.decode("utf-8")
 
 
@@ -64,10 +63,7 @@ def is_cluster_ready():
         service_output = kubectl_get("all")
         node_output = kubectl_get("nodes")
         # Make sure to compare with the word " Ready " with spaces.
-        if " Ready " in node_output and "service/kubernetes" in service_output:
-            return True
-        else:
-            return False
+        return " Ready " in node_output and "service/kubernetes" in service_output
     except Exception:
         return False
 
@@ -89,7 +85,7 @@ def get_dqlite_info():
     waits = 10
     while waits > 0:
         try:
-            with open("{}/info.yaml".format(cluster_dir), mode="r") as f:
+            with open(f"{cluster_dir}/info.yaml", mode="r") as f:
                 data = yaml.safe_load(f)
                 out = subprocess.check_output(
                     "{snappath}/bin/dqlite -s file://{dbdir}/cluster.yaml -c {dbdir}/cluster.crt "
@@ -101,9 +97,8 @@ def get_dqlite_info():
                 )
                 if data["Address"] in out.decode():
                     break
-                else:
-                    time.sleep(5)
-                    waits -= 1
+                time.sleep(5)
+                waits -= 1
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             time.sleep(2)
             waits -= 1
@@ -145,7 +140,7 @@ def exit_if_no_root():
     """
     Exit if the user is not root
     """
-    if not os.geteuid() == 0:
+    if os.geteuid() != 0:
         click.echo(
             "Elevated permissions is needed for this operation. Please run this command with sudo."
         )
@@ -166,12 +161,11 @@ def exit_if_no_permission():
     if not os.access(clientConfigFile, os.R_OK):
         print("Insufficient permissions to access MicroK8s.")
         print(
-            "You can either try again with sudo or add the user {} to the 'microk8s' group:".format(
-                user
-            )
+            f"You can either try again with sudo or add the user {user} to the 'microk8s' group:"
         )
+
         print("")
-        print("    sudo usermod -a -G microk8s {}".format(user))
+        print(f"    sudo usermod -a -G microk8s {user}")
         print("    sudo chown -f -R $USER ~/.kube")
         print("")
         print(
@@ -213,9 +207,11 @@ def is_community_addon(arch, addon_name):
             addons = yaml.safe_load(fin)
 
         for addon in addons["microk8s-addons"]["addons"]:
-            if arch in addon["supported_architectures"]:
-                if addon_name == addon["name"]:
-                    return True
+            if (
+                arch in addon["supported_architectures"]
+                and addon_name == addon["name"]
+            ):
+                return True
     except Exception:
         LOG.exception("could not load addons from %s", addons_yaml)
 
@@ -230,9 +226,12 @@ def get_available_addons(arch):
             with open(addons_yaml, "r") as fin:
                 addons = yaml.safe_load(fin)
 
-            for addon in addons["microk8s-addons"]["addons"]:
-                if arch in addon["supported_architectures"]:
-                    available.append({**addon, "repository": dir})
+            available.extend(
+                {**addon, "repository": dir}
+                for addon in addons["microk8s-addons"]["addons"]
+                if arch in addon["supported_architectures"]
+            )
+
         except Exception:
             LOG.exception("could not load addons from %s", addons_yaml)
 
@@ -241,8 +240,6 @@ def get_available_addons(arch):
 
 
 def get_addon_by_name(addons, name):
-    filtered_addon = []
-
     parts = name.split("/")
     if len(parts) == 1:
         repo_name, addon_name = None, parts[0]
@@ -252,11 +249,12 @@ def get_addon_by_name(addons, name):
         # just fallback to the addon name
         repo_name, addon_name = None, name
 
-    for addon in addons:
-        if addon_name == addon["name"] and (repo_name == addon["repository"] or not repo_name):
-            filtered_addon.append(addon)
-
-    return filtered_addon
+    return [
+        addon
+        for addon in addons
+        if addon_name == addon["name"]
+        and (repo_name == addon["repository"] or not repo_name)
+    ]
 
 
 def is_service_expected_to_start(service):
@@ -266,7 +264,7 @@ def is_service_expected_to_start(service):
     :return: True if the service is meant to start
     """
     lock_path = os.path.expandvars("${SNAP_DATA}/var/lock")
-    lock = "{}/{}".format(lock_path, service)
+    lock = f"{lock_path}/{service}"
     return os.path.exists(lock_path) and not os.path.isfile(lock)
 
 
@@ -277,7 +275,7 @@ def set_service_expected_to_start(service, start=True):
     :param start: should the service start or not
     """
     lock_path = os.path.expandvars("${SNAP_DATA}/var/lock")
-    lock = "{}/{}".format(lock_path, service)
+    lock = f"{lock_path}/{service}"
     if start:
         os.remove(lock)
     else:
@@ -293,7 +291,7 @@ def check_help_flag(addons: list) -> bool:
     """
     addon = addons[0]
     if any(arg in addons for arg in ("-h", "--help")):
-        print("Addon %s does not yet have a help message." % addon)
+        print(f"Addon {addon} does not yet have a help message.")
         print("For more information about it, visit https://microk8s.io/docs/addons")
         return True
     return False
@@ -359,8 +357,8 @@ def parse_xable_single_arg(addon_arg: str, available_addons: list):
         return (parts[0], parts[1], args)
     elif len(parts) == 1:
         matching_repos = [repo for (repo, addon) in available_addons if addon == addon_name]
-        if len(matching_repos) == 0:
-            click.echo("Addon {} was not found in any repository".format(addon_name), err=True)
+        if not matching_repos:
+            click.echo(f"Addon {addon_name} was not found in any repository", err=True)
             if is_community_addon(get_current_arch(), addon_name):
                 click.echo(
                     "To use the community maintained flavor enable the respective repository:"
@@ -372,22 +370,24 @@ def parse_xable_single_arg(addon_arg: str, available_addons: list):
             sys.exit(1)
         elif len(matching_repos) == 1:
             click.echo(
-                "Infer repository {} for addon {}".format(matching_repos[0], addon_name), err=True
+                f"Infer repository {matching_repos[0]} for addon {addon_name}",
+                err=True,
             )
+
             return (matching_repos[0], addon_name, args)
         else:
             click.echo(
-                "Addon {} exists in more than repository. Please explicitly specify\n"
-                "the repository using any of:\n".format(addon_name),
+                f"Addon {addon_name} exists in more than repository. Please explicitly specify\nthe repository using any of:\n",
                 err=True,
             )
+
             for repo in matching_repos:
-                click.echo("    {}/{}".format(repo, addon_name), err=True)
+                click.echo(f"    {repo}/{addon_name}", err=True)
             click.echo("", err=True)
             sys.exit(1)
 
     else:
-        click.echo("Invalid addon name {}".format(addon_name))
+        click.echo(f"Invalid addon name {addon_name}")
         sys.exit(1)
 
 
@@ -403,12 +403,12 @@ def xable(action: str, addon_args: list):
     """
     available_addons_info = get_available_addons(get_current_arch())
     enabled_addons_info, disabled_addons_info = get_status(available_addons_info, True)
-    if action == "enable":
-        xabled_addons_info = enabled_addons_info
-    elif action == "disable":
+    if action == "disable":
         xabled_addons_info = disabled_addons_info
+    elif action == "enable":
+        xabled_addons_info = enabled_addons_info
     else:
-        click.echo("Invalid action {}. Only enable and disable are supported".format(action))
+        click.echo(f"Invalid action {action}. Only enable and disable are supported")
         sys.exit(1)
 
     # available_addons is a list of (repo_name, addon_name) tuples for all available addons
@@ -420,10 +420,10 @@ def xable(action: str, addon_args: list):
 
     for repo_name, addon_name, args in addons:
         if (repo_name, addon_name) not in available_addons:
-            click.echo("Addon {}/{} not found".format(repo_name, addon_name))
+            click.echo(f"Addon {repo_name}/{addon_name} not found")
             continue
         if (repo_name, addon_name) in xabled_addons:
-            click.echo("Addon {}/{} is already {}d".format(repo_name, addon_name, action))
+            click.echo(f"Addon {repo_name}/{addon_name} is already {action}d")
             continue
 
         wait_for_ready(timeout=30)
@@ -438,9 +438,8 @@ def xable(action: str, addon_args: list):
 def is_enabled(addon, item):
     if addon in item:
         return True
-    else:
-        filepath = os.path.expandvars(addon)
-        return os.path.isfile(filepath)
+    filepath = os.path.expandvars(addon)
+    return os.path.isfile(filepath)
 
 
 def get_status(available_addons, isReady):

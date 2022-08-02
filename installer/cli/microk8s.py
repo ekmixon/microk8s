@@ -29,11 +29,12 @@ logger = logging.getLogger(__name__)
 @click.pass_context
 def cli(ctx, help):
     try:
-        if help and len(ctx.args) == 0:
-            show_help()
-            exit(0)
-        elif help:
-            ctx.args.append("--help")
+        if help:
+            if len(ctx.args) == 0:
+                show_help()
+                exit(0)
+            else:
+                ctx.args.append("--help")
 
         if len(ctx.args) == 0:
             show_error()
@@ -144,38 +145,31 @@ def install(args) -> None:
         if not aux.is_enough_space():
             echo.warning("VM disk size requested exceeds free space on host.")
 
-    if platform == "darwin":
-        aux = MacOS(args)
-        if not aux.is_enough_space():
-            echo.warning("VM disk size requested exceeds free space on host.")
-
-    else:
-        aux = Linux(args)
-        if not aux.is_enough_space():
-            echo.warning("VM disk size requested exceeds free space on host.")
+    aux = MacOS(args) if platform == "darwin" else Linux(args)
+    if not aux.is_enough_space():
+        echo.warning("VM disk size requested exceeds free space on host.")
 
     vm_provider_name: str = "multipass"
     vm_provider_class = get_provider_for(vm_provider_name)
     try:
         vm_provider_class.ensure_provider()
     except ProviderNotFound as provider_error:
-        if provider_error.prompt_installable:
-            if args.assume_yes or (
-                echo.is_tty_connected()
-                and echo.confirm(
-                    "Support for {!r} needs to be set up. "
-                    "Would you like to do that now?".format(provider_error.provider)
-                )
-            ):
-                vm_provider_class.setup_provider(echoer=echo)
-            else:
-                raise provider_error
-        else:
+        if not provider_error.prompt_installable:
             raise provider_error
 
+        if args.assume_yes or (
+            echo.is_tty_connected()
+            and echo.confirm(
+                "Support for {!r} needs to be set up. "
+                "Would you like to do that now?".format(provider_error.provider)
+            )
+        ):
+            vm_provider_class.setup_provider(echoer=echo)
+        else:
+            raise provider_error
     instance = vm_provider_class(echoer=echo)
     spec = vars(args)
-    spec.update({"kubeconfig": get_kubeconfig_path()})
+    spec["kubeconfig"] = get_kubeconfig_path()
     instance.launch_instance(spec)
     echo.info("MicroK8s is up and running. See the available commands with `microk8s --help`.")
 
@@ -187,19 +181,18 @@ def uninstall() -> None:
     try:
         vm_provider_class.ensure_provider()
     except ProviderNotFound as provider_error:
-        if provider_error.prompt_installable:
-            if echo.is_tty_connected():
-                echo.warning(
-                    (
-                        "MicroK8s is not running. VM provider {!r} has been removed.".format(
-                            provider_error.provider
-                        )
-                    )
-                )
-            return 1
-        else:
+        if not provider_error.prompt_installable:
             raise provider_error
 
+        if echo.is_tty_connected():
+            echo.warning(
+                (
+                    "MicroK8s is not running. VM provider {!r} has been removed.".format(
+                        provider_error.provider
+                    )
+                )
+            )
+        return 1
     instance = vm_provider_class(echoer=echo)
     instance.destroy()
     clear_kubeconfig()
@@ -209,10 +202,7 @@ def uninstall() -> None:
 def kubectl(args) -> int:
     if platform == "win32":
         return Windows(args).kubectl()
-    if platform == "darwin":
-        return MacOS(args).kubectl()
-    else:
-        return Linux(args).kubectl()
+    return MacOS(args).kubectl() if platform == "darwin" else Linux(args).kubectl()
 
 
 def inspect() -> None:
@@ -243,10 +233,9 @@ def inspect() -> None:
             else:
                 instance.pull_file(name=tarball_location, destination=host_destination)
                 echo.wrapped(
-                    "The report tarball {} is stored on the current directory".format(
-                        tarball_location.split("/")[-1]
-                    )
+                    f'The report tarball {tarball_location.split("/")[-1]} is stored on the current directory'
                 )
+
 
     except ProviderInstanceNotFoundError:
         _not_installed(echo)
@@ -282,11 +271,14 @@ def dashboard_proxy() -> None:
 
         command = ["microk8s.kubectl", "-n", "kube-system", "get", "secret"]
         output = instance.run(command, hide_output=True)
-        secret_name = None
-        for line in output.split(b"\n"):
-            if line.startswith(b"default-token"):
-                secret_name = line.split()[0].decode()
-                break
+        secret_name = next(
+            (
+                line.split()[0].decode()
+                for line in output.split(b"\n")
+                if line.startswith(b"default-token")
+            ),
+            None,
+        )
 
         if not secret_name:
             echo.error("Cannot find the dashboard secret.")
@@ -303,7 +295,7 @@ def dashboard_proxy() -> None:
 
         ip = instance.get_instance_info().ipv4[0]
 
-        echo.info("Dashboard will be available at https://{}:10443".format(ip))
+        echo.info(f"Dashboard will be available at https://{ip}:10443")
         echo.info("Use the following token to login:")
         echo.info(token)
 
@@ -360,7 +352,7 @@ def run(cmd) -> None:
             echo.warning("MicroK8s is not running. Please run `microk8s start`.")
             return 1
         command = cmd[0]
-        cmd[0] = "microk8s.{}".format(command)
+        cmd[0] = f"microk8s.{command}"
         instance.run(cmd)
     except ProviderInstanceNotFoundError:
         _not_installed(echo)
@@ -380,20 +372,19 @@ def _get_microk8s_commands() -> List:
         vm_provider_class.ensure_provider()
         instance = vm_provider_class(echoer=echo)
         instance_info = instance.get_instance_info()
-        if instance_info.is_running():
-            commands = instance.run("ls -1 /snap/bin/".split(), hide_output=True)
-            mk8s = [
-                c.decode().replace("microk8s.", "")
-                for c in commands.split()
-                if c.decode().startswith("microk8s.")
-            ]
-            complete = mk8s
-            if "dashboard-proxy" not in mk8s:
-                complete += ["dashboard-proxy"]
-            complete.sort()
-            return complete
-        else:
+        if not instance_info.is_running():
             return ["start", "stop"]
+        commands = instance.run("ls -1 /snap/bin/".split(), hide_output=True)
+        mk8s = [
+            c.decode().replace("microk8s.", "")
+            for c in commands.split()
+            if c.decode().startswith("microk8s.")
+        ]
+        complete = mk8s
+        if "dashboard-proxy" not in complete:
+            complete += ["dashboard-proxy"]
+        complete.sort()
+        return complete
     except ProviderNotFound:
         return ["start", "stop"]
 

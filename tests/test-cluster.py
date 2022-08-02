@@ -30,9 +30,9 @@ class VM:
         :param backend: either multipass of lxc
         :param attach_vm: the name of the VM we want to reuse
         """
-        rnd_letters = "".join(random.choice(string.ascii_lowercase) for i in range(6))
+        rnd_letters = "".join(random.choice(string.ascii_lowercase) for _ in range(6))
         self.backend = backend
-        self.vm_name = "vm-{}".format(rnd_letters)
+        self.vm_name = f"vm-{rnd_letters}"
         self.attached = False
         if attach_vm:
             self.attached = True
@@ -71,34 +71,31 @@ class VM:
                     process.stdin.close()
 
             subprocess.check_call(
-                "/snap/bin/lxc launch -p default -p microk8s ubuntu:18.04 {}".format(
-                    self.vm_name
-                ).split()
+                f"/snap/bin/lxc launch -p default -p microk8s ubuntu:18.04 {self.vm_name}".split()
             )
+
             time.sleep(20)
             if channel_or_snap.startswith("/"):
                 self._transfer_install_local_snap_lxc(channel_or_snap)
             else:
-                cmd_prefix = "/snap/bin/lxc exec {}  -- script -e -c".format(self.vm_name).split()
-                cmd = ["snap install microk8s --classic --channel {}".format(channel_or_snap)]
+                cmd_prefix = f"/snap/bin/lxc exec {self.vm_name}  -- script -e -c".split()
+                cmd = [f"snap install microk8s --classic --channel {channel_or_snap}"]
                 time.sleep(20)
                 subprocess.check_output(cmd_prefix + cmd)
+        elif channel_or_snap.startswith("/"):
+            self._transfer_install_local_snap_lxc(channel_or_snap)
         else:
-            if channel_or_snap.startswith("/"):
-                self._transfer_install_local_snap_lxc(channel_or_snap)
-            else:
-                cmd = "/snap/bin/lxc exec {}  -- ".format(self.vm_name).split()
-                cmd.append("sudo snap refresh microk8s --channel {}".format(channel_or_snap))
-                subprocess.check_call(cmd)
+            cmd = f"/snap/bin/lxc exec {self.vm_name}  -- ".split()
+            cmd.append(f"sudo snap refresh microk8s --channel {channel_or_snap}")
+            subprocess.check_call(cmd)
 
     def _transfer_install_local_snap_lxc(self, channel_or_snap):
-        print("Installing snap from {}".format(channel_or_snap))
-        cmd_prefix = "/snap/bin/lxc exec {}  -- script -e -c".format(self.vm_name).split()
+        print(f"Installing snap from {channel_or_snap}")
+        cmd_prefix = f"/snap/bin/lxc exec {self.vm_name}  -- script -e -c".split()
         cmd = ["rm -rf /var/tmp/microk8s.snap"]
         subprocess.check_output(cmd_prefix + cmd)
-        cmd = "lxc file push {} {}/var/tmp/microk8s.snap".format(
-            channel_or_snap, self.vm_name
-        ).split()
+        cmd = f"lxc file push {channel_or_snap} {self.vm_name}/var/tmp/microk8s.snap".split()
+
         subprocess.check_output(cmd)
         cmd = ["snap install /var/tmp/microk8s.snap --classic --dangerous"]
         subprocess.check_output(cmd_prefix + cmd)
@@ -107,38 +104,31 @@ class VM:
     def _setup_multipass(self, channel_or_snap):
         if not self.attached:
             subprocess.check_call(
-                "/snap/bin/multipass launch 18.04 -n {} -m 2G".format(self.vm_name).split()
+                f"/snap/bin/multipass launch 18.04 -n {self.vm_name} -m 2G".split()
             )
+
             if channel_or_snap.startswith("/"):
                 self._transfer_install_local_snap_multipass(channel_or_snap)
             else:
                 subprocess.check_call(
-                    "/snap/bin/multipass exec {}  -- sudo "
-                    "snap install microk8s --classic --channel {}".format(
-                        self.vm_name, channel_or_snap
-                    ).split()
-                )
-        else:
-            if channel_or_snap.startswith("/"):
-                self._transfer_install_local_snap_multipass(channel_or_snap)
-            else:
-                subprocess.check_call(
-                    "/snap/bin/multipass exec {}  -- sudo "
-                    "snap refresh microk8s --channel {}".format(
-                        self.vm_name, channel_or_snap
-                    ).split()
+                    f"/snap/bin/multipass exec {self.vm_name}  -- sudo snap install microk8s --classic --channel {channel_or_snap}".split()
                 )
 
+        elif channel_or_snap.startswith("/"):
+            self._transfer_install_local_snap_multipass(channel_or_snap)
+        else:
+            subprocess.check_call(
+                f"/snap/bin/multipass exec {self.vm_name}  -- sudo snap refresh microk8s --channel {channel_or_snap}".split()
+            )
+
     def _transfer_install_local_snap_multipass(self, channel_or_snap):
-        print("Installing snap from {}".format(channel_or_snap))
+        print(f"Installing snap from {channel_or_snap}")
         subprocess.check_call(
-            "/snap/bin/multipass transfer {} {}:/var/tmp/microk8s.snap".format(
-                channel_or_snap, self.vm_name
-            ).split()
+            f"/snap/bin/multipass transfer {channel_or_snap} {self.vm_name}:/var/tmp/microk8s.snap".split()
         )
+
         subprocess.check_call(
-            "/snap/bin/multipass exec {}  -- sudo "
-            "snap install /var/tmp/microk8s.snap --classic --dangerous".format(self.vm_name).split()
+            f"/snap/bin/multipass exec {self.vm_name}  -- sudo snap install /var/tmp/microk8s.snap --classic --dangerous".split()
         )
 
     def run(self, cmd):
@@ -149,27 +139,28 @@ class VM:
         """
         if self.backend == "multipass":
             output = subprocess.check_output(
-                "/snap/bin/multipass exec {}  -- sudo " "{}".format(self.vm_name, cmd).split()
+                f"/snap/bin/multipass exec {self.vm_name}  -- sudo {cmd}".split()
             )
+
             return output
         elif self.backend == "lxc":
-            cmd_prefix = "/snap/bin/lxc exec {}  -- script -e -c ".format(self.vm_name).split()
+            cmd_prefix = f"/snap/bin/lxc exec {self.vm_name}  -- script -e -c ".split()
             output = subprocess.check_output(cmd_prefix + [cmd])
             return output
         else:
-            raise Exception("Not implemented for backend {}".format(self.backend))
+            raise Exception(f"Not implemented for backend {self.backend}")
 
     def release(self):
         """
         Release a VM.
         """
-        print("Destroying VM in {}".format(self.backend))
+        print(f"Destroying VM in {self.backend}")
         if self.backend == "multipass":
-            subprocess.check_call("/snap/bin/multipass stop {}".format(self.vm_name).split())
-            subprocess.check_call("/snap/bin/multipass delete {}".format(self.vm_name).split())
+            subprocess.check_call(f"/snap/bin/multipass stop {self.vm_name}".split())
+            subprocess.check_call(f"/snap/bin/multipass delete {self.vm_name}".split())
         elif self.backend == "lxc":
-            subprocess.check_call("/snap/bin/lxc stop {}".format(self.vm_name).split())
-            subprocess.check_call("/snap/bin/lxc delete {}".format(self.vm_name).split())
+            subprocess.check_call(f"/snap/bin/lxc stop {self.vm_name}".split())
+            subprocess.check_call(f"/snap/bin/lxc delete {self.vm_name}".split())
 
 
 class TestCluster(object):
@@ -184,11 +175,11 @@ class TestCluster(object):
             type(self).VM = []
             if not reuse_vms:
                 size = 3
-                for i in range(0, size):
-                    print("Creating machine {}".format(i))
+                for i in range(size):
+                    print(f"Creating machine {i}")
                     vm = VM(backend)
                     vm.setup(channel_to_test)
-                    print("Waiting for machine {}".format(i))
+                    print(f"Waiting for machine {i}")
                     vm.run("/snap/bin/microk8s.status --wait-ready --timeout 120")
                     self.VM.append(vm)
             else:
@@ -203,11 +194,10 @@ class TestCluster(object):
             for vm in self.VM:
                 if vm.vm_name in connected_nodes.decode():
                     continue
-                else:
-                    print("Adding machine {} to cluster".format(vm.vm_name))
-                    add_node = vm_master.run("/snap/bin/microk8s.add-node")
-                    endpoint = [ep for ep in add_node.decode().split() if ":25000/" in ep]
-                    vm.run("/snap/bin/microk8s.join {}".format(endpoint[0]))
+                print(f"Adding machine {vm.vm_name} to cluster")
+                add_node = vm_master.run("/snap/bin/microk8s.add-node")
+                endpoint = [ep for ep in add_node.decode().split() if ":25000/" in ep]
+                vm.run(f"/snap/bin/microk8s.join {endpoint[0]}")
 
             # Wait for nodes to be ready
             print("Waiting for nodes to register")
@@ -220,11 +210,12 @@ class TestCluster(object):
             # Wait for CNI pods
             print("Waiting for cni")
             while True:
-                ready_pods = 0
                 pods = vm_master.run("/snap/bin/microk8s.kubectl get po -n kube-system -o wide")
-                for line in pods.decode().splitlines():
-                    if "calico" in line and "Running" in line:
-                        ready_pods += 1
+                ready_pods = sum(
+                    "calico" in line and "Running" in line
+                    for line in pods.decode().splitlines()
+                )
+
                 if ready_pods == (len(self.VM) + 1):
                     print(pods.decode())
                     break
@@ -236,7 +227,7 @@ class TestCluster(object):
             print("Cleanup up cluster")
             if not reuse_vms:
                 for vm in self.VM:
-                    print("Releasing machine {} in {}".format(vm.vm_name, vm.backend))
+                    print(f"Releasing machine {vm.vm_name} in {vm.backend}")
                     vm.release()
 
     def test_calico_in_nodes(self):
@@ -248,7 +239,7 @@ class TestCluster(object):
         for vm in self.VM:
             if vm.vm_name not in pods.decode():
                 assert False
-            print("Calico found in node {}".format(vm.vm_name))
+            print(f"Calico found in node {vm.vm_name}")
 
     def test_nodes_in_ha(self):
         """
@@ -273,18 +264,19 @@ class TestCluster(object):
             break
 
         # remove a node
-        print("Removing machine {}".format(self.VM[0].vm_name))
+        print(f"Removing machine {self.VM[0].vm_name}")
         self.VM[0].run("/snap/bin/microk8s.leave")
-        self.VM[1].run("/snap/bin/microk8s.remove-node {}".format(self.VM[0].vm_name))
+        self.VM[1].run(f"/snap/bin/microk8s.remove-node {self.VM[0].vm_name}")
         # allow for some time for the leader to hand over leadership
         time.sleep(10)
         attempt = 100
         while True:
-            ready_pods = 0
             pods = self.VM[1].run("/snap/bin/microk8s.kubectl get po -n kube-system -o wide")
-            for line in pods.decode().splitlines():
-                if "calico" in line and "Running" in line:
-                    ready_pods += 1
+            ready_pods = sum(
+                "calico" in line and "Running" in line
+                for line in pods.decode().splitlines()
+            )
+
             if ready_pods == (len(self.VM)):
                 print(pods.decode())
                 break
@@ -320,11 +312,12 @@ class TestCluster(object):
         time.sleep(10)
         attempt = 100
         while True:
-            ready_pods = 0
             pods = self.VM[1].run("/snap/bin/microk8s.kubectl get po -A -o wide")
-            for line in pods.decode().splitlines():
-                if "ingress" in line and "Running" in line:
-                    ready_pods += 1
+            ready_pods = sum(
+                "ingress" in line and "Running" in line
+                for line in pods.decode().splitlines()
+            )
+
             if ready_pods == (len(self.VM) - 1):
                 print(pods.decode())
                 break
@@ -336,7 +329,7 @@ class TestCluster(object):
         print("Rejoin the node")
         add_node = self.VM[1].run("/snap/bin/microk8s.add-node")
         endpoint = [ep for ep in add_node.decode().split() if ":25000/" in ep]
-        self.VM[0].run("/snap/bin/microk8s.join {}".format(endpoint[0]))
+        self.VM[0].run(f"/snap/bin/microk8s.join {endpoint[0]}")
 
         print("Waiting for nodes to be ready")
         connected_nodes = self.VM[0].run("/snap/bin/microk8s.kubectl get no")
@@ -366,10 +359,10 @@ class TestCluster(object):
 
         # Form cluster
         vm_master = self.VM[0]
-        print("Adding machine {} to cluster".format(vm.vm_name))
+        print(f"Adding machine {vm.vm_name} to cluster")
         add_node = vm_master.run("/snap/bin/microk8s.add-node")
         endpoint = [ep for ep in add_node.decode().split() if ":25000/" in ep]
-        vm.run("/snap/bin/microk8s.join {} --worker".format(endpoint[0]))
+        vm.run(f"/snap/bin/microk8s.join {endpoint[0]} --worker")
         ep_parts = endpoint[0].split(":")
         master_ip = ep_parts[0]
 

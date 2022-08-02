@@ -58,9 +58,9 @@ class Multipass(Provider):
     def _launch(self, specs: Dict) -> None:
         image = "18.04"
 
-        cpus = "{}".format(specs["cpu"])
-        mem = "{}G".format(specs["mem"])
-        disk = "{}G".format(specs["disk"])
+        cpus = f'{specs["cpu"]}'
+        mem = f'{specs["mem"]}G'
+        disk = f'{specs["disk"]}G'
 
         try_for = 10
 
@@ -70,19 +70,17 @@ class Multipass(Provider):
                     instance_name=self.instance_name, cpus=cpus, mem=mem, disk=disk, image=image
                 )
             except Exception:
-                if try_for > 0:
-                    try_for -= 1
-                    sleep(1)
-                    continue
-                else:
+                if try_for <= 0:
                     raise
+                try_for -= 1
+                sleep(1)
+                continue
             else:
                 break
 
     def get_instance_info(self) -> InstanceInfo:
         try:
-            instance_info = self._get_instance_info()
-            return instance_info
+            return self._get_instance_info()
         except errors.ProviderInfoError as instance_error:
             # Until we have proper multipass error codes to know if this
             # was a communication error we should keep this error tracking
@@ -106,11 +104,11 @@ class Multipass(Provider):
             ) from instance_error
 
     def _umount(self, *, mountpoint: str) -> None:
-        mount = "{}:{}".format(self.instance_name, mountpoint)
+        mount = f"{self.instance_name}:{mountpoint}"
         self._multipass_cmd.umount(mount=mount)
 
     def _push_file(self, *, source: str, destination: str) -> None:
-        destination = "{}:{}".format(self.instance_name, destination)
+        destination = f"{self.instance_name}:{destination}"
         self._multipass_cmd.copy_files(source=source, destination=destination)
 
     def __init__(
@@ -154,7 +152,7 @@ class Multipass(Provider):
         self.run(command=["test", "-f", name])
 
         # copy file from instance
-        source = "{}:{}".format(self.instance_name, name)
+        source = f"{self.instance_name}:{name}"
         self._multipass_cmd.copy_files(source=source, destination=destination)
         if delete:
             self.run(command=["rm", name])

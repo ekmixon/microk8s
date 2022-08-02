@@ -80,7 +80,10 @@ def disable_addons(destroy_storage):
         if addon in disabled:
             continue
 
-        if (addon["name"] == "hostpath-storage" or addon["name"] == "storage") and destroy_storage:
+        if (
+            addon["name"] in ["hostpath-storage", "storage"]
+            and destroy_storage
+        ):
             disable_addon(addon["repository"], f"{addon['name']}", ["destroy-storage"])
         else:
             disable_addon(addon["repository"], addon["name"])
@@ -112,10 +115,7 @@ def clean_cluster():
     3. Delete any locks and addon binaries.
     """
     cmd = [KUBECTL, "get", "ns", "-o=name"]
-    res = run_silently(cmd)
-    nss = []
-    if res:
-        nss = res.split()
+    nss = res.split() if (res := run_silently(cmd)) else []
     resources = ["replicationcontrollers", "daemonsets", "deployments"]
     for ns in nss:
         ns_name = ns.split("/")[-1]
@@ -159,10 +159,7 @@ def remove_storage_classes():
     """
     print("Removing StorageClasses")
     cmd = [KUBECTL, "get", "storageclasses", "-o=name"]
-    res = run_silently(cmd)
-    classes = []
-    if res:
-        classes = res.split()
+    classes = res.split() if (res := run_silently(cmd)) else []
     for cs in classes:
         if "microk8s-hostpath" in cs:
             continue
@@ -176,10 +173,7 @@ def remove_priority_classes():
     """
     print("Removing PriorityClasses")
     cmd = [KUBECTL, "get", "priorityclasses", "-o=name"]
-    res = run_silently(cmd)
-    classes = []
-    if res:
-        classes = res.split()
+    classes = res.split() if (res := run_silently(cmd)) else []
     for cs in classes:
         if "system-cluster-critical" in cs or "system-node-critical" in cs:
             continue
@@ -191,7 +185,7 @@ def reset_cert_reissue():
     """
     Remove the certificate no refresh lock.
     """
-    lock = f"snap_data()/var/lock/no-cert-reissue"
+    lock = "snap_data()/var/lock/no-cert-reissue"
     if os.path.exists(lock):
         cmd = f"rm -rf {lock}"
         subprocess.run(cmd.split())

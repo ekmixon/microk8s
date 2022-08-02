@@ -32,7 +32,7 @@ def run_until_success(cmd, timeout_insec=60, err_out=None):
                 return output
             if datetime.datetime.now() > deadline:
                 raise
-            print("Retrying {}".format(cmd))
+            print(f"Retrying {cmd}")
             time.sleep(3)
 
 
@@ -47,7 +47,7 @@ def kubectl(cmd, timeout_insec=300, err_out=None):
     Returns: the kubectl response in a string
 
     """
-    cmd = "/snap/bin/microk8s.kubectl " + cmd
+    cmd = f"/snap/bin/microk8s.kubectl {cmd}"
     return run_until_success(cmd, timeout_insec, err_out)
 
 
@@ -63,7 +63,7 @@ def docker(cmd):
     docker_bin = "/usr/bin/docker"
     if os.path.isfile("/snap/bin/microk8s.docker"):
         docker_bin = "/snap/bin/microk8s.docker"
-    cmd = docker_bin + " " + cmd
+    cmd = f"{docker_bin} {cmd}"
     return run_until_success(cmd)
 
 
@@ -77,7 +77,7 @@ def kubectl_get(target, timeout_insec=300):
     Returns: YAML structured response
 
     """
-    cmd = "get -o yaml " + target
+    cmd = f"get -o yaml {target}"
     output = kubectl(cmd, timeout_insec)
     return yaml.safe_load(output)
 
@@ -93,17 +93,15 @@ def wait_for_pod_state(
     while True:
         if datetime.datetime.now() > deadline:
             raise TimeoutError(
-                "Pod {} not in {} after {} seconds.".format(pod, desired_state, timeout_insec)
+                f"Pod {pod} not in {desired_state} after {timeout_insec} seconds."
             )
-        cmd = "po {} -n {}".format(pod, namespace)
+
+        cmd = f"po {pod} -n {namespace}"
         if label:
-            cmd += " -l {}".format(label)
+            cmd += f" -l {label}"
         data = kubectl_get(cmd, timeout_insec)
         if pod == "":
-            if len(data["items"]) > 0:
-                status = data["items"][0]["status"]
-            else:
-                status = []
+            status = data["items"][0]["status"] if len(data["items"]) > 0 else []
         else:
             status = data["status"]
         if "containerStatuses" in status:
@@ -122,8 +120,8 @@ def wait_for_installation(cluster_nodes=1, timeout_insec=360):
     """
     Wait for kubernetes service to appear.
     """
+    cmd = "svc kubernetes"
     while True:
-        cmd = "svc kubernetes"
         data = kubectl_get(cmd, timeout_insec)
         service = data["metadata"]["name"]
         if "kubernetes" in service:
@@ -131,8 +129,8 @@ def wait_for_installation(cluster_nodes=1, timeout_insec=360):
         else:
             time.sleep(3)
 
+    cmd = "get no"
     while True:
-        cmd = "get no"
         nodes = kubectl(cmd, timeout_insec)
         if nodes.count(" Ready") == cluster_nodes:
             break
@@ -148,11 +146,11 @@ def wait_for_namespace_termination(namespace, timeout_insec=360):
     Wait for the termination of the provided namespace.
     """
 
-    print("Waiting for namespace {} to be removed".format(namespace))
+    print(f"Waiting for namespace {namespace} to be removed")
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=timeout_insec)
     while True:
         try:
-            cmd = "/snap/bin/microk8s.kubectl get ns {}".format(namespace)
+            cmd = f"/snap/bin/microk8s.kubectl get ns {namespace}"
             check_output(cmd.split()).strip().decode("utf8")
             print("Waiting...")
         except CalledProcessError:
@@ -179,7 +177,7 @@ def microk8s_enable(addon, timeout_insec=300):
             print("Not a cuda capable system. Will not test gpu addon")
             raise CalledProcessError(1, "Nothing to do for gpu")
 
-    cmd = "/snap/bin/microk8s.enable {}".format(addon)
+    cmd = f"/snap/bin/microk8s.enable {addon}"
     return run_until_success(cmd, timeout_insec)
 
 
@@ -191,7 +189,7 @@ def microk8s_disable(addon):
         addon: name of the addon
 
     """
-    cmd = "/snap/bin/microk8s.disable {}".format(addon)
+    cmd = f"/snap/bin/microk8s.disable {addon}"
     return run_until_success(cmd, timeout_insec=300)
 
 
@@ -233,7 +231,7 @@ def is_container():
     try:
         if os.path.isdir("/run/systemd/system"):
             container = check_output("sudo systemd-detect-virt --container".split())
-            print("Tests are running in {}".format(container))
+            print(f"Tests are running in {container}")
             return True
     except CalledProcessError:
         print("systemd-detect-virt did not detect a container")

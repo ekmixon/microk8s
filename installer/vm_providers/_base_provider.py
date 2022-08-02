@@ -43,7 +43,7 @@ class Provider(abc.ABC):
         self.instance_name = "microk8s-vm"
 
         if build_provider_flags is None:
-            build_provider_flags = dict()
+            build_provider_flags = {}
         self.build_provider_flags = build_provider_flags.copy()
 
         self._cached_home_directory: Optional[pathlib.Path] = None
@@ -132,15 +132,16 @@ class Provider(abc.ABC):
         except errors.ProviderLaunchError:
             self.destroy()
             url = None
-            if sys.platform == "win32":
-                url = "https://multipass.run/docs/troubleshooting-networking-on-windows"
-            elif sys.platform == "darwin":
+            if sys.platform == "darwin":
                 url = "https://multipass.run/docs/troubleshooting-networking-on-macos"
 
+            elif sys.platform == "win32":
+                url = "https://multipass.run/docs/troubleshooting-networking-on-windows"
             if url:
                 raise errors.ConnectivityError(
-                    "The VM cannot connect to snapcraft.io, please see {}".format(url)
+                    f"The VM cannot connect to snapcraft.io, please see {url}"
                 )
+
             else:
                 raise
 
@@ -155,11 +156,14 @@ class Provider(abc.ABC):
             f.write(kubeconfig)
 
     def _setup_microk8s(self, specs: Dict) -> None:
-        self.run("snap install microk8s --classic --channel {}".format(specs["channel"]).split())
-        if sys.platform == "win32":
-            self.run("snap install microk8s-integrator-windows".split())
-        elif sys.platform == "darwin":
+        self.run(
+            f'snap install microk8s --classic --channel {specs["channel"]}'.split()
+        )
+
+        if sys.platform == "darwin":
             self.run("snap install microk8s-integrator-macos".split())
+        elif sys.platform == "win32":
+            self.run("snap install microk8s-integrator-windows".split())
 
     def _get_env_command(self) -> Sequence[str]:
         """Get command sequence for `env` with configured flags."""

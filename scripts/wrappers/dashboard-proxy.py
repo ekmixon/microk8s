@@ -29,11 +29,14 @@ def dashboard_proxy():
         "secret",
     ]
     output = check_output(command)
-    secret_name = None
-    for line in output.split(b"\n"):
-        if line.startswith(b"default-token"):
-            secret_name = line.split()[0].decode()
-            break
+    secret_name = next(
+        (
+            line.split()[0].decode()
+            for line in output.split(b"\n")
+            if line.startswith(b"default-token")
+        ),
+        None,
+    )
 
     if not secret_name:
         print("Cannot find the dashboard secret.")

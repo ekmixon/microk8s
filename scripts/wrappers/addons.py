@@ -27,11 +27,11 @@ def add(name: str, repository: str, reference: str, force: bool):
     repo_dir = snap_common() / "addons" / name
     if repo_dir.exists():
         if not force:
-            click.echo("Error: repository '{}' already exists!".format(name), err=True)
+            click.echo(f"Error: repository '{name}' already exists!", err=True)
             click.echo("Use the --force flag to overwrite it".format(name), err=True)
             sys.exit(1)
 
-        click.echo("Removing {}".format(repo_dir))
+        click.echo(f"Removing {repo_dir}")
         shutil.rmtree(repo_dir)
 
     cmd = [GIT, "clone", repository, repo_dir]
@@ -43,10 +43,12 @@ def add(name: str, repository: str, reference: str, force: bool):
 
     if not (repo_dir / "addons.yaml").exists():
         click.echo(
-            "Error: repository '{}' does not contain an addons.yaml file".format(name), err=True
+            f"Error: repository '{name}' does not contain an addons.yaml file",
+            err=True,
         )
+
         click.echo("Remove it with:", err=True)
-        click.echo("    microk8s addons repo remove {}".format(name), err=True)
+        click.echo(f"    microk8s addons repo remove {name}", err=True)
         sys.exit(1)
 
 
@@ -55,10 +57,10 @@ def add(name: str, repository: str, reference: str, force: bool):
 def remove(name: str):
     repo_dir = snap_common() / "addons" / name
     if not repo_dir.exists():
-        click.echo("Error: repository '{}' does not exist".format(name), err=True)
+        click.echo(f"Error: repository '{name}' does not exist", err=True)
         sys.exit(1)
 
-    click.echo("Removing {}".format(repo_dir))
+    click.echo(f"Removing {repo_dir}")
     shutil.rmtree(repo_dir)
 
 
@@ -67,22 +69,24 @@ def remove(name: str):
 def update(name: str):
     repo_dir = snap_common() / "addons" / name
     if not repo_dir.exists():
-        click.echo("Error: repository '{}' does not exist".format(name), err=True)
+        click.echo(f"Error: repository '{name}' does not exist", err=True)
         sys.exit(1)
 
     if not (repo_dir / ".git").exists():
-        click.echo("Error: built-in repository '{}' cannot be updated".format(name), err=True)
+        click.echo(f"Error: built-in repository '{name}' cannot be updated", err=True)
         sys.exit(1)
 
-    click.echo("Updating repository {}".format(name))
+    click.echo(f"Updating repository {name}")
     subprocess.check_call([GIT, "pull"], cwd=repo_dir)
 
     if not (repo_dir / "addons.yaml").exists():
         click.echo(
-            "Error: repository '{}' does not contain an addons.yaml file".format(name), err=True
+            f"Error: repository '{name}' does not contain an addons.yaml file",
+            err=True,
         )
+
         click.echo("Remove it with:", err=True)
-        click.echo("    microk8s addons repo remove {}".format(name), err=True)
+        click.echo(f"    microk8s addons repo remove {name}", err=True)
         sys.exit(1)
 
 
@@ -98,10 +102,10 @@ def list(format: str):
             with open(addons_yaml, "r") as fin:
                 addons = yaml.safe_load(fin)
 
-            count = 0
-            for addon in addons["microk8s-addons"]["addons"]:
-                if arch in addon["supported_architectures"]:
-                    count += 1
+            count = sum(
+                arch in addon["supported_architectures"]
+                for addon in addons["microk8s-addons"]["addons"]
+            )
 
             source = "(built-in)"
             try:
@@ -111,7 +115,7 @@ def list(format: str):
                 revision = subprocess.check_output(
                     [GIT, "rev-parse", "HEAD"], cwd=repo_dir, stderr=subprocess.DEVNULL
                 ).decode()[:6]
-                source = "{}@{}".format(remote_url.strip(), revision.strip())
+                source = f"{remote_url.strip()}@{revision.strip()}"
             except (subprocess.CalledProcessError, TypeError, ValueError):
                 pass
 
@@ -125,16 +129,17 @@ def list(format: str):
             )
 
         except Exception as e:
-            click.echo("could not load addons from {}: {}".format(addons_yaml, e), err=True)
+            click.echo(f"could not load addons from {addons_yaml}: {e}", err=True)
 
     if format == "json":
         click.echo(json.dumps(repositories))
-    elif format == "yaml":
-        click.echo(yaml.safe_dump(repositories))
     elif format == "table":
         click.echo(("{:10} {:>6} {}").format("REPO", "ADDONS", "SOURCE"))
         for repo in repositories:
             click.echo("{:10} {:>6} {}".format(repo["name"], repo["addons"], repo["source"]))
+
+    elif format == "yaml":
+        click.echo(yaml.safe_dump(repositories))
 
 
 if __name__ == "__main__":

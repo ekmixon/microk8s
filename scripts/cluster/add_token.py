@@ -45,9 +45,7 @@ def add_token_with_expiry(token, file, ttl):
 
 def run_util(*args, debug=False):
     env = os.environ.copy()
-    prog = ["bash", utils_sh_file]
-    prog.extend(args)
-
+    prog = ["bash", utils_sh_file, *args]
     if debug:
         print("\033[;1;32m+ %s\033[;0;0m" % " ".join(prog))
 
@@ -101,11 +99,10 @@ def print_pretty(token, check):
 
 def get_output_dict(token, check):
     _, all_ips, port = get_network_info()
-    info = {
+    return {
         "token": f"{token}/{check}",
         "urls": [f"{ip}:{port}/{token}/{check}" for ip in all_ips],
     }
-    return info
 
 
 def print_json(token, check):
@@ -160,11 +157,7 @@ if __name__ == "__main__":
 
     ttl = args.token_ttl
 
-    if args.token is not None:
-        token = args.token
-    else:
-        token = token_hex(16)
-
+    token = args.token if args.token is not None else token_hex(16)
     if len(token) < 32:
         print("Invalid token size.  It must be 32 characters long.")
         exit(1)
